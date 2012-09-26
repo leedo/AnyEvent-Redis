@@ -3,20 +3,19 @@ use Test::More;
 use t::Redis;
 
 test_redis {
-    my ($r, $port) = @_;
+    my ($r, $port, $server) = @_;
 
-    # make a new redis object using wrong port
-    my $redis = AnyEvent::Redis->new(host => "127.0.0.1", port => Test::TCP::empty_port());
+    my $info = $r->info->recv;
+    ok $info->{redis_version}, "initial command";
 
-    # should fail
-    eval { $redis->info->recv; };
+    $server->stop;
+    $server->start;
 
-    # fix the port and try again
-    $redis->{port} = $port;
+    my $cv = AE::cv;
 
-    my $info = $redis->info->recv;
+    $info = $r->info->recv;
+    ok $info->{redis_version}, "reconnect command";
 
-    ok $info->{redis_version}, "got response after reconnect";
 };
 
 done_testing;

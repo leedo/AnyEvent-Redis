@@ -58,7 +58,17 @@ sub cleanup {
     my $self = shift;
     delete $self->{cmd_cb};
     delete $self->{sock};
-    $self->{on_error}->(@_) if $self->{on_error};
+
+    # disconnected while trying to read a response
+    # queue them back up and reconnect
+    if (my $cmds = delete $self->{running_cmds}) {
+      my ($cv, @args) = @{ pop @$cmds };
+      push @{$self->{connect_queue}}, @$cmds;
+      $self->connect(@args, $cv);
+    }
+    elsif ($self->{on_error}) {
+      $self->{on_error}->(@_);
+    }
 }
 
 sub connect {
@@ -133,12 +143,13 @@ sub connect {
 
             $self->all_cv->begin;
 
+            my @args = @_;
             my $send = join("\r\n",
-                  "*" . (1 + @_),
+                  "*" . (1 + @args),
                   map { ('$' . length $_ => $_) }
                         (uc($command), map { $self->{encoding} && length($_)
                                              ? $self->{encoding}->encode($_)
-                                             : $_ } @_))
+                                             : $_ } @args))
                 . "\r\n";
 
             warn $send if DEBUG;
@@ -187,6 +198,8 @@ sub connect {
                 });
 
             } elsif ($command !~ /^p?subscribe\z/) {
+                my $retry = [$cv, $command, @args];
+                push @{$self->{running_cmds}}, $retry;
 
                 $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                     my ($res, $err) = @_;
@@ -197,6 +210,9 @@ sub connect {
                         # Older versions of Redis (1.2) need this
                         $res = [split / /, $res];
                     }
+
+                    # remove current command from list of running commands
+                    $self->{running_cmds} = [ grep {$_ != $retry} @{$self->{running_cmds}} ];
 
                     $self->all_cv->end;
                     $err ? $cv->croak($res) : $cv->send($res);
