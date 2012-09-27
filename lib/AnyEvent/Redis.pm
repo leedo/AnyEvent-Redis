@@ -220,8 +220,6 @@ sub connect {
                         $res = [split / /, $res];
                     }
 
-                    # remove current command from list of running commands
-
                     $self->all_cv->end;
                     $err ? $cv->croak($res) : $cv->send($res);
                 });
