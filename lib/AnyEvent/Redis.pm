@@ -157,18 +157,24 @@ sub connect {
             my $retry = [$cv, $command, @args];
             push @{$self->{running_cmds}}, $retry;
 
+            my $done = sub {
+              $self->{running_cmds} = [grep {$_ != $retry} @{$self->{running_cmds}}];
+            };
+
             $hd->push_write($send);
 
             if ($self->{sub} && %{$self->{sub}}) {
 
                 # Remember subscriptions
                 $self->{sub}->{$_} ||= [$cv, $cb] for @_;
+                $done->();
 
             } elsif ($command eq 'exec') {
 
                 # at end of transaction, expect bulk reply possibly including errors
                 $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                     my ($res, $err) = @_;
+                    $done->();
 
                     $self->all_cv->end;
                     my $mcvs = delete $self->{multi_cvs} || [];
@@ -193,6 +199,7 @@ sub connect {
                 # in transaction, expect only "QUEUED"
                 $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                     my ($res, $err) = @_;
+                    $done->();
 
                     $self->all_cv->end;
                     $err || $res ne 'QUEUED'
@@ -204,6 +211,7 @@ sub connect {
 
                 $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                     my ($res, $err) = @_;
+                    $done->();
 
                     if ($command eq 'info') {
                         $res = { map { split /:/, $_, 2 } split /\r\n/, $res };
@@ -213,7 +221,6 @@ sub connect {
                     }
 
                     # remove current command from list of running commands
-                    $self->{running_cmds} = [ grep {$_ != $retry} @{$self->{running_cmds}} ];
 
                     $self->all_cv->end;
                     $err ? $cv->croak($res) : $cv->send($res);
@@ -231,6 +238,7 @@ sub connect {
 
                     $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                         my ($res, $err) = @_;
+                        $done->();
 
                         if (ref $res) {
                             my $action = lc $res->[0];
