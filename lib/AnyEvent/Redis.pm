@@ -154,6 +154,9 @@ sub connect {
 
             warn $send if DEBUG;
 
+            my $retry = [$cv, $command, @args];
+            push @{$self->{running_cmds}}, $retry;
+
             $hd->push_write($send);
 
             if ($self->{sub} && %{$self->{sub}}) {
@@ -198,8 +201,6 @@ sub connect {
                 });
 
             } elsif ($command !~ /^p?subscribe\z/) {
-                my $retry = [$cv, $command, @args];
-                push @{$self->{running_cmds}}, $retry;
 
                 $hd->push_read("AnyEvent::Redis::Protocol" => sub {
                     my ($res, $err) = @_;

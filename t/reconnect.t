@@ -13,9 +13,23 @@ test_redis {
 
     my $cv = AE::cv;
 
-    $info = $r->info->recv;
-    ok $info->{redis_version}, "reconnect command";
+    $cv->begin;
 
+    $r->info(sub {
+      my $info = shift;
+      ok $info->{redis_version}, "reconnect command";
+      $cv->end;
+    });
+
+    $cv->begin;
+
+    $r->info(sub {
+      my $info = shift;
+      ok $info->{redis_version}, "reconnect command";
+      $cv->end;
+    });
+
+    $cv->recv;
 };
 
 done_testing;
