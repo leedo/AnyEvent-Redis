@@ -32,4 +32,28 @@ test_redis sub {
     $cv->recv;
 }, { reconnect => 1 };
 
+test_redis sub {
+    my ($r, $port, $server) = @_;
+    my $info = $r->info->recv;
+    ok $info->{redis_version}, "initial command";
+
+    $server->stop;
+
+    my $cv = AE::cv;
+    $r->{on_error} = sub {
+      ok $_[0] =~ /Connection reset/, "got error reconnecting";
+      $cv->end;
+    };
+
+    $cv->begin;
+
+    $r->info(sub {
+      my $info = shift;
+      ok 0, "shouldn't get here";
+      $cv->end;
+    });
+
+    $cv->recv;
+}, { reconnect => 1 };
+
 done_testing;
