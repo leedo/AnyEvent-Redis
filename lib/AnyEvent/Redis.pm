@@ -150,7 +150,7 @@ sub connect {
             my $cmd_cv = AE::cv;
             $cmd_cv->cb(sub {
                 my $strong_self = $self;
-              });
+            });
 
             # pubsub is very different - get it out of the way first
 
@@ -209,18 +209,27 @@ sub connect {
             }
 
             # non-pubsub from here on out
-
+            # copy args out of @_ so we can use in reconnect
+            my @args = @_;
             $cv->cb(sub {
                 my $cv = shift;
                 local $@;
                 eval {
                     my $res = $cv->recv;
-                    $cb->($res);
+                    $cb->($res) if $cb;
                 };
                 if ($@) {
+                  if ($self->{reconnect} && $@ =~ /Broken pipe/) {
+                    my $t; $t = AE::timer 1, 0, sub {
+                      undef $t;
+                      $self->connect($command, @args, $cb);
+                    };
+                  }
+                  else {
                     ($self->{on_error} || sub { die @_ })->(my $err = $@);
+                  }
                 }
-            }) if $cb;
+            });
 
             $self->all_cv->begin;
             push @{$self->{pending_cvs}}, $cv;

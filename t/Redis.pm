@@ -17,21 +17,22 @@ sub test_redis(&;$) {
         plan skip_all => 'redis-server not found in your PATH';
     }
 
-    test_tcp
-        server => sub {
+    my $server = Test::TCP->new(
+        code => sub {
             my $port = shift;
             rewrite_redis_conf($port);
             exec "redis-server", "t/redis.conf";
-        },
-        client => sub {
-            my $port = shift;
-            my $r = AnyEvent::Redis->new(
-                host => "127.0.0.1",
-                port => $port,
-                ref $args ? %$args : ()
-            );
-            $cb->($r, $port);
-        };
+        }
+    );
+
+    my $r = AnyEvent::Redis->new(
+        host => "127.0.0.1",
+        port => $server->port,
+        ref $args ? %$args : ()
+    );
+
+    # pass in server object so it can be restarted
+    $cb->($r, $server->port, $server);
 }
 
 sub rewrite_redis_conf {
